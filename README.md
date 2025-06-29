@@ -27,5 +27,5 @@ A web application that lets users paste a recipe and automatically calculates th
 
 ---
 
-## 📁 Project Structure
+
 
