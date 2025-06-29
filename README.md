@@ -20,8 +20,7 @@ A web application that lets users paste a recipe and automatically calculates th
 - **Frontend:** Next.js (App Router), Tailwind CSS  
 - **Backend:** Supabase (for recipe storage and ingredient nutrition data)  
 - **AI Integration:** Google Gemini API  
-- **Nutrition APIs:**  
-  - API Ninjas  
+- **Nutrition APIs:**    
   - CalorieNinjas  
   - Fallback estimation using regex-based logic  
 
