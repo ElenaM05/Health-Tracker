@@ -14,7 +14,7 @@ export default function Home() {
     setLoading(true);
     setError('');
     setResults(null);
-
+    
     try {
       // Step 1: Parse recipe with AI
       const parseResponse = await fetch('/api/parse-recipe', {
@@ -30,7 +30,7 @@ export default function Home() {
       }
 
       const { ingredients } = await parseResponse.json();
-
+      
       // Step 2: Get nutrition data
       const nutritionResponse = await fetch('/api/get-nutrition', {
         method: 'POST',
@@ -56,7 +56,7 @@ export default function Home() {
     return (
     <>
       <Head>
-        <title>AI Recipe Calorie Calculator</title>
+        <title>Calorie Calculator</title>
         <meta name="description" content="Calculate calories in your recipes using AI and nutritional databases" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
@@ -67,10 +67,10 @@ export default function Home() {
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-mint-600 to-green-500 bg-clip-text text-transparent mb-4">
-              🥗 AI Recipe Calorie Calculator
+              🥗 Calorie Calculator
             </h1>
             <p className="text-lg md:text-xl text-mint-900 max-w-xl mx-auto">
-              Paste your recipe and let AI parse the ingredients while we fetch accurate nutritional data.
+              Paste your recipe and we will fetch accurate nutritional data.
             </p>
           </div>
 
@@ -107,7 +107,7 @@ export default function Home() {
                   Analyzing Recipe...
                 </div>
               ) : (
-                'Calculate Calories with AI'
+                'Calculate Calories'
               )}
             </button>
           </form>

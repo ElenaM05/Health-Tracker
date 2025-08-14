@@ -3,6 +3,6 @@
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
   "/api/get-nutrition": "pages/api/get-nutrition.js",
-  "/api/parse-recipe": "pages/api/parse-recipe.js",
-  "/": "pages/index.js"
+  "/": "pages/index.js",
+  "/api/parse-recipe": "pages/api/parse-recipe.js"
 }
