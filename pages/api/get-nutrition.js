@@ -18,13 +18,13 @@ export default async function handler(req, res) {
     const results = await Promise.all(
       ingredients.map(async (ingredient) => {
         try {
-          console.log('Querying ingredient:', ingredient);
+          //console.log('Querying ingredient:', ingredient);
 
           const response = await axios.get('https://api.calorieninjas.com/v1/nutrition', {
             params: { query: `${ingredient.amount} ${ingredient.unit} ${ingredient.name}` },
             headers: { 'X-Api-Key': process.env.CALORIE_NINJAS_API_KEY }
           });
-          console.log('CalorieNinjas API response:', response.data);
+          //console.log('CalorieNinjas API response:', response.data);
 
           const item = response.data.items?.[0];
           if (!item) throw new Error('No data');
