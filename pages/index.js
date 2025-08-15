@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
-import Head from 'next/head';
-import { Save, Clock, Users, ChefHat, X, Check, AlertCircle, Loader2, Plus, List, Eye, Calculator } from 'lucide-react';
+import { Save, Clock, Users, ChefHat, X, Check, AlertCircle, Loader2, Plus, List, Eye, Calculator, Link, Edit3, Globe } from 'lucide-react';
 
-export default function Home() {
+export default function RecipeApp() {
   // Navigation state
-  const [currentView, setCurrentView] = useState('input'); // 'input' or 'recipes'
+  const [currentView, setCurrentView] = useState('input');
+  
+  // Input method state
+  const [inputMethod, setInputMethod] = useState('manual'); // 'manual' or 'url'
   
   // Recipe input form state
   const [recipe, setRecipe] = useState('');
+  const [recipeUrl, setRecipeUrl] = useState('');
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -56,7 +59,7 @@ export default function Home() {
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleManualSubmit = async (e) => {
     e.preventDefault();
     if (!recipe.trim()) return;
 
@@ -65,12 +68,10 @@ export default function Home() {
     setResults(null);
     
     try {
-      // First, parse the recipe to extract ingredients using your parse-recipe API
+      // Parse the recipe to extract ingredients
       const parseResponse = await fetch('/api/parse-recipe', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipe }),
       });
 
@@ -80,12 +81,10 @@ export default function Home() {
 
       const parseData = await parseResponse.json();
       
-      // Then get nutrition data using the ingredients from parse-recipe
+      // Get nutrition data
       const nutritionResponse = await fetch('/api/get-nutrition', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ingredients: parseData.ingredients }),
       });
 
@@ -95,7 +94,7 @@ export default function Home() {
 
       const nutritionData = await nutritionResponse.json();
       
-      // Format results to match what the UI expects
+      // Format results
       const formattedResults = {
         totalCalories: nutritionData.totalCalories || 0,
         totalNutrients: {
@@ -119,12 +118,13 @@ export default function Home() {
             sodium: Math.round(ingredient.nutrition.sodium || 0)
           } : null,
           estimated: !ingredient.nutrition
-        }))
+        })),
+        source: 'api-calculated'
       };
 
       setResults(formattedResults);
       
-      // Auto-extract recipe name from text if possible
+      // Auto-extract recipe name
       const lines = recipe.split('\n');
       const titleLine = lines.find(line => 
         !line.toLowerCase().includes('ingredients') && 
@@ -145,6 +145,121 @@ export default function Home() {
     }
   };
 
+  const handleUrlSubmit = async (e) => {
+    e.preventDefault();
+    if (!recipeUrl.trim()) return;
+
+    setLoading(true);
+    setError('');
+    setResults(null);
+    
+    try {
+      // Parse recipe from URL - this now includes nutrition detection
+      const parseResponse = await fetch('/api/parse-url-recipe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: recipeUrl.trim() }),
+      });
+
+      if (!parseResponse.ok) {
+        throw new Error('Failed to parse recipe from URL');
+      }
+
+      const parseData = await parseResponse.json();
+      const urlRecipe = parseData.recipe;
+      
+      // Set recipe metadata from URL extraction
+      setRecipeData(prev => ({
+        ...prev,
+        name: urlRecipe.name || '',
+        description: urlRecipe.description || '',
+        servings: urlRecipe.servings || 4,
+        cooking_time: urlRecipe.cookingTime || urlRecipe.totalTime || null,
+        difficulty: urlRecipe.difficulty || 'medium'
+      }));
+
+      // Set the recipe text for potential manual editing
+      setRecipe(urlRecipe.recipeText || '');
+
+      // Check if nutrition data was already found on the site
+      if (parseData.hasExistingNutrition && parseData.nutritionResults) {
+        // Use the nutrition data from the website
+        const formattedResults = {
+          ...parseData.nutritionResults,
+          source: 'website-extracted',
+          siteNutrition: true
+        };
+        setResults(formattedResults);
+      } else {
+        // No nutrition data found - need to calculate it
+        if (urlRecipe.ingredients && urlRecipe.ingredients.length > 0) {
+          // Parse ingredients and get nutrition
+          const parseIngredientResponse = await fetch('/api/parse-recipe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ recipe: urlRecipe.recipeText }),
+          });
+
+          if (!parseIngredientResponse.ok) {
+            throw new Error('Failed to parse ingredients');
+          }
+
+          const ingredientData = await parseIngredientResponse.json();
+          
+          // Get nutrition data
+          const nutritionResponse = await fetch('/api/get-nutrition', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ingredients: ingredientData.ingredients }),
+          });
+
+          if (!nutritionResponse.ok) {
+            throw new Error('Failed to get nutrition data');
+          }
+
+          const nutritionData = await nutritionResponse.json();
+          
+          // Format results
+          const formattedResults = {
+            totalCalories: nutritionData.totalCalories || 0,
+            totalNutrients: {
+              protein: nutritionData.totalNutrients?.protein || 0,
+              carbs: nutritionData.totalNutrients?.carbs || 0,
+              fat: nutritionData.totalNutrients?.fat || 0,
+              fiber: nutritionData.totalNutrients?.fiber || 0,
+              sugar: nutritionData.totalNutrients?.sugar || 0,
+              sodium: nutritionData.totalNutrients?.sodium || 0
+            },
+            ingredients: nutritionData.ingredients.map(ingredient => ({
+              name: ingredient.name,
+              original: ingredient.original,
+              calories: ingredient.nutrition ? Math.round(ingredient.nutrition.calories) : 0,
+              nutrients: ingredient.nutrition ? {
+                protein: Math.round((ingredient.nutrition.protein || 0) * 10) / 10,
+                fat: Math.round((ingredient.nutrition.fat || 0) * 10) / 10,
+                carbs: Math.round((ingredient.nutrition.carbs || 0) * 10) / 10,
+                fiber: Math.round((ingredient.nutrition.fiber || 0) * 10) / 10,
+                sugar: Math.round((ingredient.nutrition.sugar || 0) * 10) / 10,
+                sodium: Math.round(ingredient.nutrition.sodium || 0)
+              } : null,
+              estimated: !ingredient.nutrition
+            })),
+            source: 'api-calculated'
+          };
+
+          setResults(formattedResults);
+        } else {
+          throw new Error('No ingredients found in the recipe URL');
+        }
+      }
+      
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Save recipe to database
   const handleSaveRecipe = async () => {
     setSaveStatus('saving');
@@ -153,7 +268,7 @@ export default function Home() {
     try {
       const ingredientsFormatted = results.ingredients.map(ingredient => ({
         name: ingredient.name,
-        amount: 100, // Default amount since we don't have specific amounts in this format
+        amount: 100,
         unit: 'g',
         original: ingredient.original,
         originalAmount: 100,
@@ -174,9 +289,7 @@ export default function Home() {
 
       const response = await fetch('/api/save-recipe', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(recipePayload)
       });
 
@@ -187,7 +300,6 @@ export default function Home() {
 
       setSaveStatus('success');
       
-      // Reset form after successful save
       setTimeout(() => {
         setShowSaveModal(false);
         setSaveStatus(null);
@@ -198,7 +310,6 @@ export default function Home() {
           cooking_time: null,
           difficulty: 'medium'
         });
-        // Refresh recipes list if we're on that view
         if (currentView === 'recipes') {
           loadSavedRecipes();
         }
@@ -256,46 +367,119 @@ export default function Home() {
           Calculate Nutrition
         </h1>
         <p className="text-lg md:text-xl text-green-900 max-w-xl mx-auto">
-          Paste your recipe and we will fetch accurate nutritional data.
+          Enter a recipe URL or paste your recipe text to get accurate nutritional data.
         </p>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        className="w-full bg-white/90 border border-green-300 rounded-2xl shadow-lg p-8 mb-8 flex flex-col items-center"
-      >
-        <div className="mb-6 w-full">
-          <label
-            htmlFor="recipe"
-            className="block text-lg font-semibold text-green-700 mb-3 text-center"
-          >
-            Enter Your Recipe
-          </label>
-          <textarea
-            id="recipe"
-            value={recipe}
-            onChange={(e) => setRecipe(e.target.value)}
-            className="w-full h-40 p-4 border-2 border-green-200 rounded-xl focus:border-green-400 focus:ring-2 focus:ring-green-200 transition-all duration-200 resize-none bg-green-50"
-            placeholder="Paste your recipe here..."
-            required
-          />
-        </div>
-
+      {/* Input Method Toggle */}
+      <div className="flex bg-green-100 rounded-lg p-1 mb-6">
         <button
-          type="submit"
-          disabled={loading || !recipe.trim()}
-          className="w-full bg-gradient-to-r from-green-500 to-emerald-400 text-white py-3 px-8 rounded-xl font-semibold text-lg hover:from-green-600 hover:to-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105"
+          onClick={() => setInputMethod('manual')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-all duration-200 ${
+            inputMethod === 'manual'
+              ? 'bg-white text-green-700 shadow-sm'
+              : 'text-green-600 hover:text-green-700'
+          }`}
         >
-          {loading ? (
-            <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white mr-3"></div>
-              Analyzing Recipe...
-            </div>
-          ) : (
-            'Calculate Calories'
-          )}
+          <Edit3 size={16} />
+          Manual Entry
         </button>
-      </form>
+        <button
+          onClick={() => setInputMethod('url')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-all duration-200 ${
+            inputMethod === 'url'
+              ? 'bg-white text-green-700 shadow-sm'
+              : 'text-green-600 hover:text-green-700'
+          }`}
+        >
+          <Link size={16} />
+          Recipe URL
+        </button>
+      </div>
+
+      {/* Manual Entry Form */}
+      {inputMethod === 'manual' && (
+        <form
+          onSubmit={handleManualSubmit}
+          className="w-full bg-white/90 border border-green-300 rounded-2xl shadow-lg p-8 mb-8 flex flex-col items-center"
+        >
+          <div className="mb-6 w-full">
+            <label
+              htmlFor="recipe"
+              className="block text-lg font-semibold text-green-700 mb-3 text-center"
+            >
+              Enter Your Recipe
+            </label>
+            <textarea
+              id="recipe"
+              value={recipe}
+              onChange={(e) => setRecipe(e.target.value)}
+              className="w-full h-40 p-4 border-2 border-green-200 rounded-xl focus:border-green-400 focus:ring-2 focus:ring-green-200 transition-all duration-200 resize-none bg-green-50"
+              placeholder="Paste your recipe here..."
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading || !recipe.trim()}
+            className="w-full bg-gradient-to-r from-green-500 to-emerald-400 text-white py-3 px-8 rounded-xl font-semibold text-lg hover:from-green-600 hover:to-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105"
+          >
+            {loading ? (
+              <div className="flex items-center justify-center">
+                <Loader2 className="animate-spin h-6 w-6 mr-3" />
+                Analyzing Recipe...
+              </div>
+            ) : (
+              'Calculate Calories'
+            )}
+          </button>
+        </form>
+      )}
+
+      {/* URL Entry Form */}
+      {inputMethod === 'url' && (
+        <form
+          onSubmit={handleUrlSubmit}
+          className="w-full bg-white/90 border border-green-300 rounded-2xl shadow-lg p-8 mb-8 flex flex-col items-center"
+        >
+          <div className="mb-6 w-full">
+            <label
+              htmlFor="recipeUrl"
+              className="block text-lg font-semibold text-green-700 mb-3 text-center"
+            >
+              Enter Recipe URL
+            </label>
+            <input
+              id="recipeUrl"
+              type="url"
+              value={recipeUrl}
+              onChange={(e) => setRecipeUrl(e.target.value)}
+              className="w-full p-4 border-2 border-green-200 rounded-xl focus:border-green-400 focus:ring-2 focus:ring-green-200 transition-all duration-200 bg-green-50"
+              placeholder="https://example.com/recipe-page"
+              required
+            />
+            <p className="text-sm text-green-600 mt-2 text-center">
+              Works with most popular recipe websites like AllRecipes, Food Network, BBC Good Food, etc.
+            </p>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading || !recipeUrl.trim()}
+            className="w-full bg-gradient-to-r from-green-500 to-emerald-400 text-white py-3 px-8 rounded-xl font-semibold text-lg hover:from-green-600 hover:to-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105"
+          >
+            {loading ? (
+              <div className="flex items-center justify-center">
+                <Loader2 className="animate-spin h-6 w-6 mr-3" />
+                Fetching Recipe...
+              </div>
+            ) : (
+              'Parse Recipe from URL'
+            )}
+          </button>
+        </form>
+      )}
 
       {error && (
         <div className="w-full bg-red-50 border-l-4 border-red-500 p-4 mb-8 rounded-xl text-center">
@@ -306,9 +490,19 @@ export default function Home() {
       {results && (
         <div className="w-full bg-white/90 border border-gray-200 rounded-2xl shadow-lg p-6 md:p-10 animate-slide-up flex flex-col items-center">
           <div className="w-full flex justify-between items-center mb-8">
-            <h2 className="text-2xl md:text-3xl font-bold text-gray-800">
-              Nutritional Breakdown
-            </h2>
+            <div>
+              <h2 className="text-2xl md:text-3xl font-bold text-gray-800">
+                Nutritional Breakdown
+              </h2>
+              {results.siteNutrition && (
+                <div className="flex items-center gap-2 mt-2">
+                  <Globe size={16} className="text-blue-500" />
+                  <span className="text-sm text-blue-600 font-medium">
+                    Nutrition data extracted from website
+                  </span>
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setShowSaveModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all duration-200"
@@ -323,31 +517,54 @@ export default function Home() {
               <div className="flex flex-col items-center justify-center md:mr-8 mb-4 md:mb-0">
                 <span className="text-lg font-bold text-gray-900">Total Calories</span>
                 <span className="text-4xl font-extrabold text-gray-900">{results.totalCalories}</span>
+                {results.perServing && (
+                  <span className="text-sm text-gray-600">
+                    ({results.perServing.calories} per serving)
+                  </span>
+                )}
               </div>
               <div className="flex flex-wrap justify-center gap-3">
                 <div className="bg-white rounded-lg px-4 py-2 shadow text-center min-w-[90px]">
                   <span className="font-semibold">Protein:</span>
                   <div>{results.totalNutrients.protein}g</div>
+                  {results.perServing && (
+                    <div className="text-xs text-gray-500">({results.perServing.protein}g/serving)</div>
+                  )}
                 </div>
                 <div className="bg-white rounded-lg px-4 py-2 shadow text-center min-w-[90px]">
                   <span className="font-semibold">Fat:</span>
                   <div>{results.totalNutrients.fat}g</div>
+                  {results.perServing && (
+                    <div className="text-xs text-gray-500">({results.perServing.fat}g/serving)</div>
+                  )}
                 </div>
                 <div className="bg-white rounded-lg px-4 py-2 shadow text-center min-w-[90px]">
                   <span className="font-semibold">Carbs:</span>
                   <div>{results.totalNutrients.carbs}g</div>
+                  {results.perServing && (
+                    <div className="text-xs text-gray-500">({results.perServing.carbs}g/serving)</div>
+                  )}
                 </div>
                 <div className="bg-white rounded-lg px-4 py-2 shadow text-center min-w-[90px]">
                   <span className="font-semibold">Fiber:</span>
                   <div>{results.totalNutrients.fiber}g</div>
+                  {results.perServing && (
+                    <div className="text-xs text-gray-500">({results.perServing.fiber}g/serving)</div>
+                  )}
                 </div>
                 <div className="bg-white rounded-lg px-4 py-2 shadow text-center min-w-[90px]">
                   <span className="font-semibold">Sugar:</span>
                   <div>{results.totalNutrients.sugar}g</div>
+                  {results.perServing && (
+                    <div className="text-xs text-gray-500">({results.perServing.sugar}g/serving)</div>
+                  )}
                 </div>
                 <div className="bg-white rounded-lg px-4 py-2 shadow text-center min-w-[90px]">
                   <span className="font-semibold">Sodium:</span>
                   <div>{results.totalNutrients.sodium}mg</div>
+                  {results.perServing && (
+                    <div className="text-xs text-gray-500">({results.perServing.sodium}mg/serving)</div>
+                  )}
                 </div>
               </div>
             </div>
@@ -382,6 +599,9 @@ export default function Home() {
                   {ingredient.estimated && (
                     <p className="text-xs text-orange-500 mt-1">*estimated</p>
                   )}
+                  {ingredient.fromSite && (
+                    <p className="text-xs text-blue-500 mt-1">*from site</p>
+                  )}
                 </div>
               </div>
             ))}
@@ -389,8 +609,11 @@ export default function Home() {
 
           <div className="mt-8 p-4 bg-gray-100 rounded-lg w-full text-center">
             <p className="text-sm text-gray-800">
-              <strong>Note:</strong> Nutritional data is provided by CalorieNinjas API.
-              Items marked as "estimated" use fallback calculations when specific data isn't available.
+              <strong>Note:</strong> 
+              {results.siteNutrition 
+                ? " Nutritional data extracted from the recipe website."
+                : " Nutritional data is provided by CalorieNinjas API. Items marked as 'estimated' use fallback calculations when specific data isn't available."
+              }
             </p>
           </div>
         </div>
@@ -412,7 +635,7 @@ export default function Home() {
 
       {recipesLoading && (
         <div className="flex justify-center items-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mr-3"></div>
+          <Loader2 className="animate-spin h-8 w-8 text-green-500 mr-3" />
           <span className="text-green-700">Loading recipes...</span>
         </div>
       )}
@@ -512,6 +735,7 @@ export default function Home() {
                   onClick={() => {
                     setRecipe(recipe.original_text || '');
                     setCurrentView('input');
+                    setInputMethod('manual');
                   }}
                   className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-all duration-200 text-sm"
                 >
@@ -531,158 +755,149 @@ export default function Home() {
   );
 
   return (
-    <>
-      <Head>
-        <title>Calorie Calculator - {currentView === 'input' ? 'Calculate Nutrition' : 'My Recipes'}</title>
-        <meta name="description" content="Calculate calories in your recipes using AI and nutritional databases" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+    <div className="min-h-screen bg-gradient-to-br from-green-100 via-green-200 to-green-300">
+      <Navigation />
+      
+      <main>
+        {currentView === 'input' ? <RecipeInputView /> : <RecipesListView />}
+      </main>
 
-      <div className="min-h-screen bg-gradient-to-br from-green-100 via-green-200 to-green-300">
-        <Navigation />
-        
-        <main>
-          {currentView === 'input' ? <RecipeInputView /> : <RecipesListView />}
-        </main>
+      {/* Save Recipe Modal */}
+      {showSaveModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h3 className="text-lg font-semibold">Save Recipe</h3>
+              <button
+                onClick={() => setShowSaveModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
 
-        {/* Save Recipe Modal */}
-        {showSaveModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-              <div className="flex justify-between items-center p-6 border-b">
-                <h3 className="text-lg font-semibold">Save Recipe</h3>
-                <button
-                  onClick={() => setShowSaveModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X size={20} />
-                </button>
+            <div className="p-6 space-y-4">
+              {/* Recipe Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Recipe Name *
+                </label>
+                <input
+                  type="text"
+                  value={recipeData.name}
+                  onChange={(e) => setRecipeData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Enter recipe name"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
               </div>
 
-              <div className="p-6 space-y-4">
-                {/* Recipe Name */}
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description
+                </label>
+                <textarea
+                  value={recipeData.description}
+                  onChange={(e) => setRecipeData(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Brief description (optional)"
+                  rows={3}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                />
+              </div>
+
+              {/* Servings and Cooking Time */}
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Recipe Name *
+                    <Users size={16} className="inline mr-1" />
+                    Servings
                   </label>
                   <input
-                    type="text"
-                    value={recipeData.name}
-                    onChange={(e) => setRecipeData(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="Enter recipe name"
+                    type="number"
+                    value={recipeData.servings}
+                    onChange={(e) => setRecipeData(prev => ({ ...prev, servings: parseInt(e.target.value) || 1 }))}
+                    min="1"
                     className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
-
-                {/* Description */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
+                    <Clock size={16} className="inline mr-1" />
+                    Time (min)
                   </label>
-                  <textarea
-                    value={recipeData.description}
-                    onChange={(e) => setRecipeData(prev => ({ ...prev, description: e.target.value }))}
-                    placeholder="Brief description (optional)"
-                    rows={3}
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  <input
+                    type="number"
+                    value={recipeData.cooking_time || ''}
+                    onChange={(e) => setRecipeData(prev => ({ ...prev, cooking_time: e.target.value ? parseInt(e.target.value) : null }))}
+                    placeholder="Optional"
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
-
-                {/* Servings and Cooking Time */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      <Users size={16} className="inline mr-1" />
-                      Servings
-                    </label>
-                    <input
-                      type="number"
-                      value={recipeData.servings}
-                      onChange={(e) => setRecipeData(prev => ({ ...prev, servings: parseInt(e.target.value) || 1 }))}
-                      min="1"
-                      className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      <Clock size={16} className="inline mr-1" />
-                      Time (min)
-                    </label>
-                    <input
-                      type="number"
-                      value={recipeData.cooking_time || ''}
-                      onChange={(e) => setRecipeData(prev => ({ ...prev, cooking_time: e.target.value ? parseInt(e.target.value) : null }))}
-                      placeholder="Optional"
-                      className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Difficulty */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    <ChefHat size={16} className="inline mr-1" />
-                    Difficulty
-                  </label>
-                  <select
-                    value={recipeData.difficulty}
-                    onChange={(e) => setRecipeData(prev => ({ ...prev, difficulty: e.target.value }))}
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="easy">Easy</option>
-                    <option value="medium">Medium</option>
-                    <option value="hard">Hard</option>
-                  </select>
-                </div>
-
-                {/* Status Messages */}
-                {saveStatus === 'error' && (
-                  <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-md text-red-700">
-                    <AlertCircle size={16} />
-                    <span className="text-sm">{saveErrorMessage}</span>
-                  </div>
-                )}
-
-                {saveStatus === 'success' && (
-                  <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-md text-green-700">
-                    <Check size={16} />
-                    <span className="text-sm">Recipe saved successfully!</span>
-                  </div>
-                )}
               </div>
 
-              {/* Modal Footer */}
-              <div className="flex justify-end gap-3 p-6 border-t bg-gray-50">
-                <button
-                  onClick={() => setShowSaveModal(false)}
-                  disabled={saveStatus === 'saving'}
-                  className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+              {/* Difficulty */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <ChefHat size={16} className="inline mr-1" />
+                  Difficulty
+                </label>
+                <select
+                  value={recipeData.difficulty}
+                  onChange={(e) => setRecipeData(prev => ({ ...prev, difficulty: e.target.value }))}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveRecipe}
-                  disabled={!recipeData.name.trim() || saveStatus === 'saving'}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                >
-                  {saveStatus === 'saving' ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save size={16} />
-                      Save Recipe
-                    </>
-                  )}
-                </button>
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
+                </select>
               </div>
+
+              {/* Status Messages */}
+              {saveStatus === 'error' && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-md text-red-700">
+                  <AlertCircle size={16} />
+                  <span className="text-sm">{saveErrorMessage}</span>
+                </div>
+              )}
+
+              {saveStatus === 'success' && (
+                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-md text-green-700">
+                  <Check size={16} />
+                  <span className="text-sm">Recipe saved successfully!</span>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex justify-end gap-3 p-6 border-t bg-gray-50">
+              <button
+                onClick={() => setShowSaveModal(false)}
+                disabled={saveStatus === 'saving'}
+                className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveRecipe}
+                disabled={!recipeData.name.trim() || saveStatus === 'saving'}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                {saveStatus === 'saving' ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save size={16} />
+                    Save Recipe
+                  </>
+                )}
+              </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <style jsx>{`
         .animate-slide-up {
@@ -707,6 +922,6 @@ export default function Home() {
           overflow: hidden;
         }
       `}</style>
-    </>
+    </div>
   );
 }
