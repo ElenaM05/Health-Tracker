@@ -10,6 +10,11 @@ export default function HealthTrackerApp() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
+  // Handle view changes from MealPlanner component
+  const handleMealPlannerViewChange = (newView) => {
+    setMealPlannerView(newView);
+  };
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -261,7 +266,12 @@ export default function HealthTrackerApp() {
       <main>
         {currentApp === 'home' && <HomeView />}
         {currentApp === 'calorie-tracker' && <CalorieTracker currentView={calorieView} />}
-        {currentApp === 'meal-planner' && <MealPlanner currentView={mealPlannerView} />}
+        {currentApp === 'meal-planner' && (
+          <MealPlanner 
+            currentView={mealPlannerView} 
+            onViewChange={handleMealPlannerViewChange}
+          />
+        )}
       </main>
     </div>
   );
